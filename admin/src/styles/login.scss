@@ -1,0 +1,63 @@
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 40px 36px;
+    width: 360px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+
+    h1 {
+      font-size: 22px;
+      margin-bottom: 8px;
+    }
+
+    p {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 28px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 16px;
+
+      label {
+        font-size: 13px;
+        font-weight: 500;
+      }
+
+      input {
+        padding: 10px 12px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 14px;
+        outline: none;
+        transition: border-color 0.15s;
+
+        &:focus { border-color: #5865f2; }
+      }
+    }
+
+    .error {
+      font-size: 13px;
+      color: #e74c3c;
+      margin-bottom: 12px;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 11px;
+      background: #5865f2;
+      color: #fff;
+      font-size: 14px;
+      border-radius: 8px;
+    }
+  }
+}

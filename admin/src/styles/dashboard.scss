@@ -1,0 +1,85 @@
+.dashboard {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 20px;
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 32px;
+
+    h1 { font-size: 22px; }
+
+    .logout-btn {
+      background: #eee;
+      color: #333;
+    }
+  }
+
+  .tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+
+    button {
+      background: #fff;
+      color: #555;
+      border: 1px solid #ddd;
+      padding: 8px 18px;
+
+      &.active {
+        background: #5865f2;
+        color: #fff;
+        border-color: #5865f2;
+      }
+    }
+  }
+
+  .user-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 13px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    th {
+      background: #fafafa;
+      font-weight: 600;
+      color: #555;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+
+      .approve-btn { background: #2ecc71; color: #fff; }
+      .reject-btn  { background: #e74c3c; color: #fff; }
+      .delete-btn  { background: #95a5a6; color: #fff; }
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+
+      &.approved { background: #d4f5e2; color: #1a7a45; }
+      &.rejected  { background: #fde8e8; color: #c0392b; }
+      &.pending   { background: #fff3cd; color: #856404; }
+    }
+  }
+
+  .empty { text-align: center; padding: 40px; color: #999; font-size: 14px; }
+}
