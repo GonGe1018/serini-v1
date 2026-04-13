@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS users (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    discord_id VARCHAR(32) NOT NULL UNIQUE,
+    discord_username VARCHAR(100) NOT NULL,
+    ecampus_id VARCHAR(50) NOT NULL,
+    ecampus_pw_enc TEXT NOT NULL,
+    status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+    agreed_at DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

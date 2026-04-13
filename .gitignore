@@ -1,0 +1,9 @@
+.env
+serini-master/
+serini-master.zip
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+dist/
+uv.lock
