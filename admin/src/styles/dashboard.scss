@@ -82,4 +82,13 @@
   }
 
   .empty { text-align: center; padding: 40px; color: #999; font-size: 14px; }
+
+  .error-banner {
+    background: #fde8e8;
+    color: #c0392b;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
 }

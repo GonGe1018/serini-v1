@@ -10,13 +10,18 @@ export default function DashboardPage() {
   const [tab, setTab] = useState<Tab>('pending')
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(false)
+  const [actionLoading, setActionLoading] = useState<number | null>(null)
+  const [error, setError] = useState('')
   const navigate = useNavigate()
 
   const fetchUsers = useCallback(async () => {
     setLoading(true)
+    setError('')
     try {
       const { data } = await api.get<User[]>(`/users/${tab}`)
       setUsers(data)
+    } catch {
+      setError('유저 목록을 불러오는데 실패했습니다.')
     } finally {
       setLoading(false)
     }
@@ -25,14 +30,28 @@ export default function DashboardPage() {
   useEffect(() => { fetchUsers() }, [fetchUsers])
 
   async function updateStatus(id: number, status: 'approved' | 'rejected') {
-    await api.patch(`/users/${id}`, { status })
-    fetchUsers()
+    setActionLoading(id)
+    try {
+      await api.patch(`/users/${id}`, { status })
+      fetchUsers()
+    } catch {
+      setError(`상태 변경에 실패했습니다. (ID: ${id})`)
+    } finally {
+      setActionLoading(null)
+    }
   }
 
   async function deleteUser(id: number) {
     if (!confirm('정말 삭제하시겠습니까?')) return
-    await api.delete(`/users/${id}`)
-    fetchUsers()
+    setActionLoading(id)
+    try {
+      await api.delete(`/users/${id}`)
+      fetchUsers()
+    } catch {
+      setError(`유저 삭제에 실패했습니다. (ID: ${id})`)
+    } finally {
+      setActionLoading(null)
+    }
   }
 
   function logout() {
@@ -55,6 +74,8 @@ export default function DashboardPage() {
           승인된 유저
         </button>
       </div>
+
+      {error && <p className="error-banner">{error}</p>}
 
       {loading ? (
         <p className="empty">불러오는 중...</p>
@@ -79,11 +100,17 @@ export default function DashboardPage() {
                 <td className="actions">
                   {tab === 'pending' && (
                     <>
-                      <button className="approve-btn" onClick={() => updateStatus(u.id, 'approved')}>승인</button>
-                      <button className="reject-btn" onClick={() => updateStatus(u.id, 'rejected')}>거절</button>
+                      <button className="approve-btn" disabled={actionLoading === u.id} onClick={() => updateStatus(u.id, 'approved')}>
+                        {actionLoading === u.id ? '...' : '승인'}
+                      </button>
+                      <button className="reject-btn" disabled={actionLoading === u.id} onClick={() => updateStatus(u.id, 'rejected')}>
+                        {actionLoading === u.id ? '...' : '거절'}
+                      </button>
                     </>
                   )}
-                  <button className="delete-btn" onClick={() => deleteUser(u.id)}>삭제</button>
+                  <button className="delete-btn" disabled={actionLoading === u.id} onClick={() => deleteUser(u.id)}>
+                    {actionLoading === u.id ? '...' : '삭제'}
+                  </button>
                 </td>
               </tr>
             ))}
