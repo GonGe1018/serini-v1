@@ -4,6 +4,8 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+
 COPY shared/ /app/shared/
 COPY bot/pyproject.toml ./
 RUN uv pip install --system /app/shared/ && \
@@ -14,8 +16,8 @@ RUN uv pip install --system /app/shared/ && \
 
 COPY bot/ .
 
-RUN useradd -r -s /bin/false appuser && \
-    chown -R appuser:appuser /app
+RUN useradd -r -m -s /bin/false appuser && \
+    chown -R appuser:appuser /app /opt/pw-browsers
 USER appuser
 
 CMD ["python", "main.py"]
