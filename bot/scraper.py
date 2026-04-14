@@ -1,4 +1,7 @@
-from playwright.async_api import async_playwright
+import logging
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+
+logger = logging.getLogger(__name__)
 
 _SCRAPE_JS = """
 () => {
@@ -23,7 +26,6 @@ _SCRAPE_JS = """
 }
 """
 
-# 캘린더 페이지의 강좌 선택 드롭다운에서 course_id -> 과목명 동적 추출
 _COURSE_MAP_JS = """
 () => {
     var map = {};
@@ -40,9 +42,10 @@ _COURSE_MAP_JS = """
 }
 """
 
+_TIMEOUT = 30000  # 30초
+
 
 def _classify(title: str) -> str:
-    """이벤트 타입 분류."""
     t = title.lower()
     if "progress stop" in t or "progress start" in t:
         return "video"
@@ -54,64 +57,69 @@ def _classify(title: str) -> str:
 
 
 def _clean_title(title: str, desc: str) -> str:
-    """Progress stop/start 제거, 마감 기한은 설명 첫 줄로 대체."""
     if title == "마감 기한":
         first_line = desc.split("\n")[0].strip() if desc else ""
         return first_line or "과제 제출"
-    # "xxx : Progress stop/start" → "xxx"
     for suffix in (" : Progress stop", " : Progress start"):
         if title.endswith(suffix):
             title = title[: -len(suffix)]
-    # "퀴즈: xxx closes" → "퀴즈: xxx"
     if title.endswith(" closes"):
         title = title[: -len(" closes")]
-    # URL 인코딩된 + 제거
     title = title.replace("+", " ")
-    # 말줄임표 제거
     if title.endswith(".."):
         title = title[:-2].rstrip()
     return title
 
 
 async def get_upcoming_events(ecampus_id: str, ecampus_pw: str) -> dict:
-    """
-    ecampus 로그인 후 예정된 이벤트를 반환.
-    반환값: {"assignments": [...], "quizzes": [...], "videos": [...]}
-    각 항목: {course, title, date, desc, url}
-    """
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
+        try:
+            page = await browser.new_page()
 
-        # 로그인
-        await page.goto("https://ecampus.sejong.ac.kr/login/index.php")
-        await page.wait_for_load_state("networkidle")
-        await page.locator('input[name="username"]').first.fill(ecampus_id)
-        await page.locator('input[name="password"]').first.fill(ecampus_pw)
-        await page.locator('input[name="loginbutton"]').first.click()
-        await page.wait_for_load_state("networkidle")
+            await page.goto(
+                "https://ecampus.sejong.ac.kr/login/index.php",
+                timeout=_TIMEOUT,
+                wait_until="networkidle",
+            )
+            await page.locator('input[name="username"]').first.fill(ecampus_id)
+            await page.locator('input[name="password"]').first.fill(ecampus_pw)
+            await page.locator('input[name="loginbutton"]').first.click()
+            await page.wait_for_load_state("networkidle", timeout=_TIMEOUT)
 
-        # 캘린더 upcoming
-        await page.goto("https://ecampus.sejong.ac.kr/calendar/view.php?view=upcoming")
-        await page.wait_for_load_state("networkidle")
+            if "login" in page.url:
+                logger.warning("ecampus 로그인 실패 (id=%s)", ecampus_id)
+                return {"assignments": [], "quizzes": [], "videos": []}
 
-        # 과목 목록 + 이벤트 동시에 추출
-        course_map: dict = await page.evaluate(_COURSE_MAP_JS)
-        raw = await page.evaluate(_SCRAPE_JS)
-        await browser.close()
+            await page.goto(
+                "https://ecampus.sejong.ac.kr/calendar/view.php?view=upcoming",
+                timeout=_TIMEOUT,
+                wait_until="networkidle",
+            )
+
+            course_map: dict = await page.evaluate(_COURSE_MAP_JS)
+            raw: list = await page.evaluate(_SCRAPE_JS)
+        except PlaywrightTimeout:
+            logger.exception("ecampus 타임아웃 (id=%s)", ecampus_id)
+            return {"assignments": [], "quizzes": [], "videos": []}
+        except Exception:
+            logger.exception("ecampus 스크래핑 실패 (id=%s)", ecampus_id)
+            return {"assignments": [], "quizzes": [], "videos": []}
+        finally:
+            await browser.close()
 
     assignments, quizzes, videos = [], [], []
 
     for e in raw:
-        kind = _classify(e["title"])
-        course = course_map.get(e["courseId"], f"과목({e['courseId']})")
-        clean = _clean_title(e["title"], e["desc"])
+        kind = _classify(e.get("title", ""))
+        course = course_map.get(e.get("courseId"), f"과목({e.get('courseId', '?')})")
+        clean = _clean_title(e.get("title", ""), e.get("desc", ""))
         item = {
             "course": course,
             "title": clean,
-            "date": e["date"].strip(),
-            "desc": e["desc"].split("\n")[0].strip() if kind != "assignment" else "",
-            "url": e["url"],
+            "date": e.get("date", "").strip(),
+            "desc": e.get("desc", "").split("\n")[0].strip() if kind != "assignment" else "",
+            "url": e.get("url", ""),
         }
         if kind == "assignment":
             assignments.append(item)
