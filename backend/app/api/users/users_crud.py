@@ -1,7 +1,11 @@
+import logging
 from typing import Optional
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.users.users_model import User
+
+logger = logging.getLogger(__name__)
 
 
 def get_user_by_id(user_id: int, db: Session) -> Optional[User]:
@@ -24,16 +28,26 @@ def update_user_status(user_id: int, status: str, db: Session) -> Optional[User]
     user = get_user_by_id(user_id, db)
     if not user:
         return None
-    user.status = status
-    db.commit()
-    db.refresh(user)
-    return user
+    try:
+        user.status = status
+        db.commit()
+        db.refresh(user)
+        return user
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Failed to update user status (id=%s)", user_id)
+        raise
 
 
 def delete_user(user_id: int, db: Session) -> bool:
     user = get_user_by_id(user_id, db)
     if not user:
         return False
-    db.delete(user)
-    db.commit()
-    return True
+    try:
+        db.delete(user)
+        db.commit()
+        return True
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Failed to delete user (id=%s)", user_id)
+        raise

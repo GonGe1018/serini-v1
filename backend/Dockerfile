@@ -11,7 +11,10 @@ RUN uv pip compile pyproject.toml -o requirements.txt && \
 
 COPY backend/ .
 
-RUN useradd -r -s /bin/false appuser
+ENV PYTHONPATH=/app
+
+RUN useradd -r -s /bin/false appuser && \
+    chmod +x entrypoint.sh
 USER appuser
 
-CMD ["python", "-m", "app.main"]
+CMD ["./entrypoint.sh"]
