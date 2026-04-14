@@ -21,6 +21,17 @@ def _time_only(date_str: str) -> str:
     return date_str
 
 
+def _format_deadline(date_str: str) -> str:
+    date_str = date_str.strip()
+    if "오늘" in date_str:
+        t = _time_only(date_str)
+        return f"오늘 {t}"
+    if "내일" in date_str:
+        t = _time_only(date_str)
+        return f"내일 {t}"
+    return date_str
+
+
 def build_embeds(data: dict) -> list[discord.Embed]:
     assignments = data.get("assignments", [])
     quizzes = data.get("quizzes", [])
@@ -50,18 +61,18 @@ def build_embeds(data: dict) -> list[discord.Embed]:
         if urgent:
             lines = []
             for e in urgent:
-                t = _time_only(e["date"])
+                deadline = _format_deadline(e["date"])
                 link = f"[바로가기]({e['url']})" if e["url"] else ""
-                lines.append(f"**{e['course']}** — {e['title']}\n마감 {t}  {link}")
+                lines.append(f"**{e['course']}** — {e['title']}\n⏰ {deadline}  {link}")
             main_embed.add_field(name="🔴 오늘 마감", value="\n\n".join(lines), inline=False)
         if upcoming:
             lines = []
             for e in upcoming:
                 dday = _dday(e["date"])
-                t = _time_only(e["date"])
-                label = f"`{dday}`" if dday else ""
+                deadline = _format_deadline(e["date"])
+                label = f"`{dday}` " if dday else ""
                 link = f"[바로가기]({e['url']})" if e["url"] else ""
-                lines.append(f"{label} **{e['course']}** — {e['title']}\n마감 {t}  {link}")
+                lines.append(f"{label}**{e['course']}** — {e['title']}\n⏰ {deadline}  {link}")
             main_embed.add_field(name="🟡 예정", value="\n\n".join(lines), inline=False)
 
     main_embed.set_footer(text="세린이 • 매일 08:00 / 13:00 / 21:00 자동 알림")
@@ -72,10 +83,10 @@ def build_embeds(data: dict) -> list[discord.Embed]:
         today_vids = [v for v in videos if "오늘" in v["date"]]
         other_vids = [v for v in videos if "오늘" not in v["date"]]
         if today_vids:
-            lines = [f"• [{v['course']}] {v['title']}" for v in today_vids]
+            lines = [f"• [{v['course']}] {v['title']}  (오늘)" for v in today_vids]
             vid_embed.add_field(name="오늘 마감", value="\n".join(lines), inline=False)
         if other_vids:
-            lines = [f"• [{v['course']}] {v['title']}  ({_time_only(v['date'])})" for v in other_vids]
+            lines = [f"• [{v['course']}] {v['title']}  ({_format_deadline(v['date'])})" for v in other_vids]
             vid_embed.add_field(name="예정", value="\n".join(lines), inline=False)
         embeds.append(vid_embed)
 
