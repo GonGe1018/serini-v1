@@ -1,7 +1,18 @@
 import logging
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+
+from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import TimeoutError as PlaywrightTimeout
+from playwright.async_api import async_playwright
 
 logger = logging.getLogger(__name__)
+
+
+class EcampusLoginError(Exception):
+    pass
+
+
+class EcampusScrapeError(Exception):
+    pass
 
 _SCRAPE_JS = """
 () => {
@@ -89,7 +100,7 @@ async def get_upcoming_events(ecampus_id: str, ecampus_pw: str) -> dict:
 
             if "login" in page.url:
                 logger.warning("ecampus 로그인 실패 (id=%s)", ecampus_id)
-                return {"assignments": [], "quizzes": [], "videos": []}
+                raise EcampusLoginError
 
             await page.goto(
                 "https://ecampus.sejong.ac.kr/calendar/view.php?view=upcoming",
@@ -99,12 +110,14 @@ async def get_upcoming_events(ecampus_id: str, ecampus_pw: str) -> dict:
 
             course_map: dict = await page.evaluate(_COURSE_MAP_JS)
             raw: list = await page.evaluate(_SCRAPE_JS)
-        except PlaywrightTimeout:
+        except EcampusLoginError:
+            raise
+        except PlaywrightTimeout as exc:
             logger.exception("ecampus 타임아웃 (id=%s)", ecampus_id)
-            return {"assignments": [], "quizzes": [], "videos": []}
-        except Exception:
+            raise EcampusScrapeError from exc
+        except PlaywrightError as exc:
             logger.exception("ecampus 스크래핑 실패 (id=%s)", ecampus_id)
-            return {"assignments": [], "quizzes": [], "videos": []}
+            raise EcampusScrapeError from exc
         finally:
             await browser.close()
 
