@@ -1,0 +1,9 @@
+.git
+.env
+.omo
+**/__pycache__
+**/.pytest_cache
+**/.venv
+**/*.pyc
+**/node_modules
+**/dist
