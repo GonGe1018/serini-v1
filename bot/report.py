@@ -1,21 +1,19 @@
 import asyncio
 import logging
+
 import discord
-from shared.database import get_session, User
-from shared.crypto import decrypt
-from scraper import get_upcoming_events
 from embeds import build_embeds
+from scraper import EcampusLoginError, EcampusScrapeError, get_upcoming_events
+from shared.crypto import decrypt
+from shared.database import User, get_session
 
 logger = logging.getLogger(__name__)
 
 _LOGIN_FAIL_MSG = (
     "⚠️ 집현캠퍼스 로그인에 실패했습니다.\n"
-    "비밀번호가 변경되었다면 `!비밀번호`로 업데이트해주세요."
+    "비밀번호가 변경되었다면 `/비밀번호`로 업데이트해주세요."
 )
-
-
-def _is_empty_data(data: dict) -> bool:
-    return not data.get("assignments") and not data.get("quizzes") and not data.get("videos")
+_SCRAPE_FAIL_MSG = "⚠️ 집현캠퍼스 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요."
 
 
 class UpdateReportView(discord.ui.View):
@@ -47,10 +45,6 @@ class UpdateReportView(discord.ui.View):
             bot_user_id = interaction.client.user.id
             await clear_dm(interaction.channel, bot_user_id)
 
-            if _is_empty_data(data):
-                await interaction.channel.send(_LOGIN_FAIL_MSG, view=UpdateReportView())
-                return
-
             embeds = build_embeds(data)
             view = UpdateReportView()
             for i, embed in enumerate(embeds):
@@ -58,6 +52,10 @@ class UpdateReportView(discord.ui.View):
                     await interaction.channel.send(embed=embed, view=view)
                 else:
                     await interaction.channel.send(embed=embed)
+        except EcampusLoginError:
+            await interaction.channel.send(_LOGIN_FAIL_MSG, view=UpdateReportView())
+        except EcampusScrapeError:
+            await interaction.channel.send(_SCRAPE_FAIL_MSG, view=UpdateReportView())
         except Exception:
             logger.exception("Failed to update report for user %s", interaction.user.id)
             await interaction.channel.send("업데이트 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
@@ -84,10 +82,6 @@ async def clear_and_send(channel: discord.DMChannel, discord_id: int, bot_user_i
 
         await clear_dm(channel, bot_user_id)
 
-        if _is_empty_data(data):
-            await channel.send(_LOGIN_FAIL_MSG, view=UpdateReportView())
-            return
-
         embeds = build_embeds(data)
         view = UpdateReportView()
         for i, embed in enumerate(embeds):
@@ -95,6 +89,10 @@ async def clear_and_send(channel: discord.DMChannel, discord_id: int, bot_user_i
                 await channel.send(embed=embed, view=view)
             else:
                 await channel.send(embed=embed)
+    except EcampusLoginError:
+        await channel.send(_LOGIN_FAIL_MSG, view=UpdateReportView())
+    except EcampusScrapeError:
+        await channel.send(_SCRAPE_FAIL_MSG, view=UpdateReportView())
     except Exception:
         logger.exception("Failed to send report for user %s", discord_id)
 
