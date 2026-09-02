@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 import discord
+from config import bot_settings
 from embeds import build_embeds
 from scraper import EcampusLoginError, EcampusScrapeError, get_upcoming_events
 from shared.crypto import decrypt
@@ -62,10 +63,10 @@ class UpdateReportView(discord.ui.View):
 
 
 async def clear_dm(channel: discord.DMChannel, bot_user_id: int):
-    async for msg in channel.history(limit=300):
+    async for msg in channel.history(limit=bot_settings.dm_history_limit):
         if msg.author.id == bot_user_id:
             await msg.delete()
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(bot_settings.dm_delete_delay_seconds)
 
 
 async def clear_and_send(channel: discord.DMChannel, discord_id: int, bot_user_id: int):
