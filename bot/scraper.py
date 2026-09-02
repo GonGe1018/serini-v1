@@ -1,18 +1,27 @@
 import logging
+from datetime import datetime
+from typing import Literal, assert_never
 
+from activity_status import normalize_activity_title as _normalize_activity_title
+from config import bot_settings
+from course_vods import RawEvent
+from ecampus import ecampus_url
+from ecampus_errors import EcampusLoginError, EcampusScrapeError
+from embeds import EventData, EventItem
+from event_enrichment import (
+    append_active_course_vods,
+    collect_completed_activity_urls,
+    collect_completed_video_urls,
+)
 from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import Page, async_playwright
 from playwright.async_api import TimeoutError as PlaywrightTimeout
-from playwright.async_api import async_playwright
+from schedule import TIMEZONE
 
 logger = logging.getLogger(__name__)
 
+EventKind = Literal["assignment", "quiz", "video", "other"]
 
-class EcampusLoginError(Exception):
-    pass
-
-
-class EcampusScrapeError(Exception):
-    pass
 
 _SCRAPE_JS = """
 () => {
@@ -23,14 +32,13 @@ _SCRAPE_JS = """
         var titleEl = el.querySelector('h3.name');
         var dateEl = el.querySelector('.calendar-date');
         var descEl = el.querySelector('.calendar-body');
-        var html = el.innerHTML;
-        var urlMatch = html.match(/href="(https:\\/\\/ecampus\\.sejong\\.ac\\.kr\\/mod\\/[^"]+)"/);
+        var linkEl = el.querySelector('a[href*="/mod/"]');
         events.push({
-            courseId: el.getAttribute('data-course-id'),
+            courseId: el.getAttribute('data-course-id') || '',
             title: titleEl ? titleEl.textContent.trim() : '',
             date: dateEl ? dateEl.textContent.trim() : '',
             desc: descEl ? descEl.innerText.trim().substring(0, 200) : '',
-            url: urlMatch ? urlMatch[1] : ''
+            url: linkEl ? linkEl.href : ''
         });
     }
     return events;
@@ -53,12 +61,12 @@ _COURSE_MAP_JS = """
 }
 """
 
-_TIMEOUT = 30000  # 30초
+_TIMEOUT = bot_settings.ecampus_timeout_ms
 
 
-def _classify(title: str) -> str:
+def _classify(title: str) -> EventKind:
     t = title.lower()
-    if "progress stop" in t or "progress start" in t:
+    if "progress stop" in t:
         return "video"
     if "closes" in t or "퀴즈" in t:
         return "quiz"
@@ -72,24 +80,88 @@ def _clean_title(title: str, desc: str) -> str:
         first_line = desc.split("\n")[0].strip() if desc else ""
         return first_line or "과제 제출"
     for suffix in (" : Progress stop", " : Progress start"):
-        if title.endswith(suffix):
-            title = title[: -len(suffix)]
-    if title.endswith(" closes"):
-        title = title[: -len(" closes")]
-    title = title.replace("+", " ")
+        title = title.removesuffix(suffix)
+    title = title.removesuffix(" closes")
+    title = _normalize_activity_title(title)
     if title.endswith(".."):
         title = title[:-2].rstrip()
     return title
 
 
-async def get_upcoming_events(ecampus_id: str, ecampus_pw: str) -> dict:
+async def _goto_authenticated(
+    page: Page,
+    url: str,
+    expected_selector: str,
+) -> None:
+    response = await page.goto(url, timeout=_TIMEOUT, wait_until="networkidle")
+    if "login" in page.url:
+        raise EcampusLoginError
+    if response is None or not response.ok:
+        raise EcampusScrapeError
+    if await page.locator(expected_selector).count() == 0:
+        raise EcampusScrapeError
+
+
+def _partition_events(
+    raw: list[RawEvent],
+    course_map: dict[str, str],
+    completed_urls: set[str],
+) -> EventData:
+    assignments: list[EventItem] = []
+    quizzes: list[EventItem] = []
+    videos: list[EventItem] = []
+    completed_assignments: list[EventItem] = []
+    completed_quizzes: list[EventItem] = []
+    completed_videos: list[EventItem] = []
+
+    for event in raw:
+        kind = _classify(event["title"])
+        if kind == "other":
+            continue
+        course = course_map.get(
+            event["courseId"],
+            f"과목({event['courseId'] or '?'})",
+        )
+        item: EventItem = {
+            "course": course,
+            "title": _clean_title(event["title"], event["desc"]),
+            "date": event["date"].strip(),
+            "desc": (
+                event["desc"].split("\n")[0].strip()
+                if kind != "assignment"
+                else ""
+            ),
+            "url": event["url"],
+        }
+        is_completed = item["url"] in completed_urls
+        match kind:
+            case "assignment":
+                (completed_assignments if is_completed else assignments).append(item)
+            case "quiz":
+                (completed_quizzes if is_completed else quizzes).append(item)
+            case "video":
+                (completed_videos if is_completed else videos).append(item)
+            case unreachable:
+                assert_never(unreachable)
+
+    return {
+        "assignments": assignments,
+        "quizzes": quizzes,
+        "videos": videos,
+        "completed_assignments": completed_assignments,
+        "completed_quizzes": completed_quizzes,
+        "completed_videos": completed_videos,
+    }
+
+
+async def get_upcoming_events(ecampus_id: str, ecampus_pw: str) -> EventData:
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         try:
             page = await browser.new_page()
 
             await page.goto(
-                "https://ecampus.sejong.ac.kr/login/index.php",
+                ecampus_url("/login/index.php"),
                 timeout=_TIMEOUT,
                 wait_until="networkidle",
             )
@@ -102,14 +174,37 @@ async def get_upcoming_events(ecampus_id: str, ecampus_pw: str) -> dict:
                 logger.warning("ecampus 로그인 실패 (id=%s)", ecampus_id)
                 raise EcampusLoginError
 
-            await page.goto(
-                "https://ecampus.sejong.ac.kr/calendar/view.php?view=upcoming",
-                timeout=_TIMEOUT,
-                wait_until="networkidle",
+            await _goto_authenticated(
+                page,
+                ecampus_url("/calendar/view.php?view=upcoming"),
+                "select.cal_courses_flt",
             )
 
-            course_map: dict = await page.evaluate(_COURSE_MAP_JS)
-            raw: list = await page.evaluate(_SCRAPE_JS)
+            course_map: dict[str, str] = await page.evaluate(_COURSE_MAP_JS)
+            raw: list[RawEvent] = await page.evaluate(_SCRAPE_JS)
+
+            now = datetime.now(TIMEZONE)
+            await append_active_course_vods(
+                page,
+                course_map,
+                raw,
+                now,
+                _goto_authenticated,
+            )
+            completed_urls = await collect_completed_video_urls(
+                page,
+                raw,
+                _classify,
+                _goto_authenticated,
+            )
+            completed_urls.update(
+                await collect_completed_activity_urls(
+                    page,
+                    raw,
+                    _classify,
+                    _goto_authenticated,
+                )
+            )
         except EcampusLoginError:
             raise
         except PlaywrightTimeout as exc:
@@ -121,24 +216,4 @@ async def get_upcoming_events(ecampus_id: str, ecampus_pw: str) -> dict:
         finally:
             await browser.close()
 
-    assignments, quizzes, videos = [], [], []
-
-    for e in raw:
-        kind = _classify(e.get("title", ""))
-        course = course_map.get(e.get("courseId"), f"과목({e.get('courseId', '?')})")
-        clean = _clean_title(e.get("title", ""), e.get("desc", ""))
-        item = {
-            "course": course,
-            "title": clean,
-            "date": e.get("date", "").strip(),
-            "desc": e.get("desc", "").split("\n")[0].strip() if kind != "assignment" else "",
-            "url": e.get("url", ""),
-        }
-        if kind == "assignment":
-            assignments.append(item)
-        elif kind == "quiz":
-            quizzes.append(item)
-        elif kind == "video":
-            videos.append(item)
-
-    return {"assignments": assignments, "quizzes": quizzes, "videos": videos}
+    return _partition_events(raw, course_map, completed_urls)
