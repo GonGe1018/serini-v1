@@ -34,7 +34,14 @@ async def test_clear_and_send_shows_no_events_when_calendar_is_empty(monkeypatch
     channel = FakeChannel()
 
     async def empty_calendar(ecampus_id: str, ecampus_pw: str) -> dict[str, list[dict[str, str]]]:
-        return {"assignments": [], "quizzes": [], "videos": []}
+        return {
+            "assignments": [],
+            "quizzes": [],
+            "videos": [],
+            "completed_assignments": [],
+            "completed_quizzes": [],
+            "completed_videos": [],
+        }
 
     async def skip_clear(channel: FakeChannel, bot_user_id: int) -> None:
         return None
@@ -49,7 +56,11 @@ async def test_clear_and_send_shows_no_events_when_calendar_is_empty(monkeypatch
     assert len(channel.sent) == 1
     assert channel.sent[0].content is None
     assert channel.sent[0].embed is not None
-    assert channel.sent[0].embed.fields[0].name == "✅ 제출할 과제 없음"
+    assert [field.name for field in channel.sent[0].embed.fields[:3]] == [
+        "과제",
+        "퀴즈",
+        "동영상",
+    ]
 
 
 @pytest.mark.asyncio
