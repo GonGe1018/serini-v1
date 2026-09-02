@@ -1,12 +1,13 @@
 import logging
+
 import discord
-from discord import app_commands
-from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from shared.config import settings
-from shared.database import get_session, User
-from registration import registration_flow, CheckApprovalView, PasswordChangeModal
-from report import clear_and_send, send_report_to_all, UpdateReportView
+from config import bot_settings
+from discord import app_commands
+from registration import CheckApprovalView, PasswordChangeModal, registration_flow
+from report import UpdateReportView, clear_and_send, send_report_to_all
+from schedule import REPORT_SCHEDULE_TEXT, REPORT_TIMES, TIMEZONE, next_report_time
+from shared.database import User, get_session
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -17,19 +18,8 @@ intents.dm_messages = True
 
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
-scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
+scheduler = AsyncIOScheduler(timezone=TIMEZONE)
 _ready_fired = False
-
-SCHEDULE_TIMES = [(8, 0), (13, 0), (21, 0)]
-
-
-def _next_report_time() -> str:
-    now = datetime.now()
-    for h, m in SCHEDULE_TIMES:
-        scheduled = now.replace(hour=h, minute=m, second=0, microsecond=0)
-        if scheduled > now:
-            return scheduled.strftime("%H:%M")
-    return f"내일 {SCHEDULE_TIMES[0][0]:02d}:{SCHEDULE_TIMES[0][1]:02d}"
 
 
 @tree.command(name="가입", description="세린이 서비스 가입 신청")
@@ -61,7 +51,10 @@ async def cmd_help(interaction: discord.Interaction):
     embed = discord.Embed(
         title="🦒 세린이 도움말",
         color=0x5865F2,
-        description="세종대 과제 알림 봇입니다.\n매일 08:00 / 13:00 / 21:00에 과제 현황을 알려드려요.",
+        description=(
+            "세종대 과제 알림 봇입니다.\n"
+            f"매일 {REPORT_SCHEDULE_TEXT}에 과제 현황을 알려드려요."
+        ),
     )
     embed.add_field(
         name="명령어",
@@ -97,7 +90,7 @@ async def cmd_status(interaction: discord.Interaction):
     embed.add_field(name="상태", value=status_map.get(user.status, user.status), inline=True)
     embed.add_field(name="학번", value=user.ecampus_id, inline=True)
     if user.status == "approved":
-        embed.add_field(name="다음 알림", value=f"{_next_report_time()} (KST)", inline=True)
+        embed.add_field(name="다음 알림", value=f"{next_report_time()} (KST)", inline=True)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -218,11 +211,11 @@ async def on_ready():
 
     if not _ready_fired:
         _ready_fired = True
-        for h, m in SCHEDULE_TIMES:
+        for h, m in REPORT_TIMES:
             scheduler.add_job(send_report_to_all, "cron", hour=h, minute=m, args=[client])
         scheduler.start()
-        logger.info("스케줄러 시작됨 (08:00 / 13:00 / 21:00 KST)")
+        logger.info("스케줄러 시작됨 (%s KST)", REPORT_SCHEDULE_TEXT)
         await send_report_to_all(client)
 
 
-client.run(settings.discord_token)
+client.run(bot_settings.discord_token)
