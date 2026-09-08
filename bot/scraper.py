@@ -18,6 +18,10 @@ from playwright.async_api import TimeoutError as PlaywrightTimeout
 from activity_status import normalize_activity_title as _normalize_activity_title
 from activity_status import normalize_event_date
 from config import bot_settings
+from course_catalog import (
+    extracurricular_course_ids,
+    without_extracurricular_courses,
+)
 from course_vods import RawEvent
 from ecampus import ecampus_url, is_ecampus_url
 from ecampus_errors import EcampusLoginError, EcampusScrapeError
@@ -250,6 +254,10 @@ async def _collect_upcoming_events(
         logger.warning("ecampus 로그인 실패 (id=%s)", ecampus_id)
         raise EcampusLoginError
 
+    extracurricular_ids = await extracurricular_course_ids(
+        page,
+        _goto_authenticated,
+    )
     await _goto_authenticated(
         page,
         ecampus_url("/calendar/view.php?view=upcoming"),
@@ -258,6 +266,11 @@ async def _collect_upcoming_events(
 
     course_map: dict[str, str] = await page.evaluate(_COURSE_MAP_JS)
     raw: list[RawEvent] = await page.evaluate(_SCRAPE_JS)
+    course_map, raw = without_extracurricular_courses(
+        course_map,
+        raw,
+        extracurricular_ids,
+    )
     now = datetime.now(TIMEZONE)
     completed_urls = await enrich_active_course_events(
         page,
