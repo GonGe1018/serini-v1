@@ -1,7 +1,10 @@
+import re
 from collections import Counter
+from datetime import datetime, timedelta
 from typing import Literal, TypedDict, assert_never
 
 from bs4 import BeautifulSoup
+
 from course_vods import RawEvent
 
 
@@ -10,8 +13,42 @@ class VodProgressRow(TypedDict):
     completed: bool
 
 
+_EVENT_DATE_PATTERN = re.compile(r"(?P<year>\d{4})년\s*0?(?P<month>\d{1,2})월\s*0?(?P<day>\d{1,2})일.*?(?:(?P<ampm_before>오전|오후)\s*(?P<hour_before>\d{1,2}):(?P<minute_before>\d{2})|(?P<hour_after>\d{1,2}):(?P<minute_after>\d{2})\s*(?P<ampm_after>오전|오후))")
+
+
 def normalize_activity_title(title: str) -> str:
     return " ".join(title.replace("+", " ").split())
+
+
+def normalize_event_date(value: str, reference: datetime | None = None) -> str:
+    normalized = " ".join(value.split())
+    match = _EVENT_DATE_PATTERN.search(normalized)
+    if match is not None:
+        year = int(match.group("year"))
+        month = int(match.group("month"))
+        day = int(match.group("day"))
+    elif reference is not None and normalized.startswith(("오늘", "내일")):
+        relative_date = reference + timedelta(
+            days=1 if normalized.startswith("내일") else 0
+        )
+        year, month, day = relative_date.year, relative_date.month, relative_date.day
+        match = re.search(
+            r"(?:(?P<ampm_before>오전|오후)\s*(?P<hour_before>\d{1,2}):(?P<minute_before>\d{2})|(?P<hour_after>\d{1,2}):(?P<minute_after>\d{2})\s*(?P<ampm_after>오전|오후))",
+            normalized,
+        )
+    else:
+        return normalized
+    if match is None:
+        return normalized
+    ampm = match.group("ampm_before") or match.group("ampm_after")
+    hour_text = match.group("hour_before") or match.group("hour_after")
+    minute_text = match.group("minute_before") or match.group("minute_after")
+    if ampm is None or hour_text is None or minute_text is None:
+        return normalized
+    hour = int(hour_text) % 12 + (12 if ampm == "오후" else 0)
+    return (
+        f"{year:04}-{month:02}-{day:02}T{hour:02}:{int(minute_text):02}"
+    )
 
 
 def _clean_video_title(title: str) -> str:
