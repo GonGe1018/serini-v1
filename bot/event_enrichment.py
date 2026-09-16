@@ -237,14 +237,29 @@ async def enrich_active_course_events(
             if normalize_event_date(event["date"], now)
             == normalize_event_date(activity.event["date"], now)
         ]
+        dated_candidates = [
+            event
+            for event in raw
+            if event["courseId"] == module["courseId"]
+            and not event["url"]
+            and event["title"] == activity.event["title"]
+            and normalize_event_date(event["date"], now)
+            == normalize_event_date(activity.event["date"], now)
+        ]
         calendar_event = (
             exact_candidates[0]
             if len(exact_candidates) == 1
             else blank_candidates[0]
             if len(blank_candidates) == 1
+            else dated_candidates[0]
+            if len(dated_candidates) == 1
             else None
         )
         if calendar_event is not None:
+            if _event_activity_title(calendar_event) != normalize_activity_title(
+                module["title"]
+            ):
+                calendar_event["desc"] = activity.event["desc"]
             calendar_event["url"] = module["url"]
             event_urls.add(module["url"])
         elif module["url"] not in event_urls:

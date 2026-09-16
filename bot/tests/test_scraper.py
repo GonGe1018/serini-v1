@@ -301,6 +301,67 @@ async def test_course_page_restores_assignment_url_from_description() -> None:
 
 
 @pytest.mark.asyncio
+async def test_course_page_replaces_calendar_description_with_assignment_title() -> None:
+    # Given
+    url = "https://ecampus.sejong.ac.kr/mod/assign/view.php?id=390325"
+    page = cast(
+        Page,
+        cast(
+            object,
+            _FakeEnrichmentPage(
+                [{"title": "3주차 과제 - 갓생 1차 글쓰기", "url": url}],
+                {
+                    url: """
+                    <div class="submissionstatustable"><table>
+                      <tr><td>제출 여부</td><td class="submissionstatussubmitted">제출 완료</td></tr>
+                      <tr><td>종료 일시</td><td>2026-09-21 23:59</td></tr>
+                    </table></div>
+                    """
+                },
+                vod_modules=[],
+            ),
+        ),
+    )
+    raw: list[RawEvent] = [
+        {
+            "courseId": "good-course",
+            "title": "마감 기한",
+            "date": "2026년 9월 21일, 오후 11:59",
+            "desc": "강의 시간에 작성한 문단쓰기를 업로드하길 바랍니다.",
+            "url": "",
+        }
+    ]
+
+    async def navigate(
+        current_page: Page,
+        destination: str,
+        expected_selector: str,
+    ) -> None:
+        del current_page, destination, expected_selector
+
+    # When
+    completed_urls = await enrich_active_course_events(
+        page,
+        ["good-course"],
+        raw,
+        datetime(2026, 9, 16, 18, 0, tzinfo=ZoneInfo("Asia/Seoul")),
+        navigate,
+    )
+
+    # Then
+    assert raw == [
+        {
+            "courseId": "good-course",
+            "title": "마감 기한",
+            "date": "2026년 9월 21일, 오후 11:59",
+            "desc": "3주차 과제 - 갓생 1차 글쓰기",
+            "url": url,
+        }
+    ]
+    assert completed_urls == {url}
+
+
+@pytest.mark.asyncio
 async def test_course_page_fetches_all_activities_with_bounded_concurrency() -> None:
     links: list[CourseActivityLink] = [
         {
