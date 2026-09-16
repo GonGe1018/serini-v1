@@ -106,6 +106,42 @@ def test_active_course_activity_includes_assignment() -> None:
     )
 
 
+def test_active_course_activity_reads_submission_table_without_colons() -> None:
+    # Given
+    module: CourseActivityModule = {
+        "courseId": "33609",
+        "title": "3주차 과제 - 갓생 1차 글쓰기",
+        "url": "https://ecampus.sejong.ac.kr/mod/assign/view.php?id=390325",
+    }
+    html = """
+    <div class="submissionstatustable">
+      <table>
+        <tr><td>제출 여부</td><td class="submissionstatussubmitted">제출 완료</td></tr>
+        <tr><td>종료 일시</td><td>2026-09-21 23:59</td></tr>
+      </table>
+    </div>
+    """
+
+    # When
+    result = active_course_activity(
+        module,
+        html,
+        datetime(2026, 9, 16, 18, 0, tzinfo=ZoneInfo("Asia/Seoul")),
+    )
+
+    # Then
+    assert result == ActiveCourseActivity(
+        event={
+            "courseId": "33609",
+            "title": "마감 기한",
+            "date": "2026년 9월 21일, 오후 11:59",
+            "desc": "3주차 과제 - 갓생 1차 글쓰기",
+            "url": "https://ecampus.sejong.ac.kr/mod/assign/view.php?id=390325",
+        },
+        completed=True,
+    )
+
+
 def test_course_activity_url_requires_expected_ecampus_path() -> None:
     assert is_course_activity_url(
         "https://ecampus.sejong.ac.kr/mod/quiz/view.php?id=1"

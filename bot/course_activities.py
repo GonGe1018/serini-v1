@@ -27,7 +27,7 @@ _START_PATTERNS: Final = (
     re.compile(rf"{_DATE_VALUE}\s*까지는\s*퀴즈를\s*이용할\s*수\s*없음"),
 )
 _END_PATTERN: Final = re.compile(
-    rf"(?:종료\s*일시|제출\s*종료|마감\s*일시)\s*:\s*{_DATE_VALUE}"
+    rf"(?:종료\s*일시|제출\s*종료|마감\s*일시)\s*:?\s*{_DATE_VALUE}"
 )
 _ACTIVITY_PATHS: Final = frozenset(
     {"/mod/assign/view.php", "/mod/quiz/view.php"}
