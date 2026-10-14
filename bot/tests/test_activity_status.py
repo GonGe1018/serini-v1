@@ -1,6 +1,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from activity_status import (
     VodProgressRow,
     activity_is_completed,
@@ -45,6 +47,33 @@ def test_activity_is_completed_requires_a_finished_quiz_attempt() -> None:
 
     assert not activity_is_completed("quiz", in_progress)
     assert activity_is_completed("quiz", finished)
+
+
+@pytest.mark.parametrize("cell_class", ["cell c1", "state"])
+@pytest.mark.parametrize(
+    ("state", "completed"),
+    [("종료됨", True), ("제출됨", True), ("진행 중", False), ("Not submitted", False)],
+)
+def test_quiz_completion_reads_state_without_submission_details(
+    cell_class: str,
+    state: str,
+    completed: bool,
+) -> None:
+    # Given
+    html = f"""
+    <table class="quizattemptsummary"><tbody><tr>
+      <td class="cell c0">1</td>
+      <td class="{cell_class}">{state}<span class="statedetails">2026-10-13 13:35에 제출됨</span></td>
+      <td class="cell c2">90.00</td>
+      <td class="cell c3"><span class="noreviewmessage">2026/10/14 23:59 사용가능</span></td>
+    </tr></tbody></table>
+    """
+
+    # When
+    result = activity_is_completed("quiz", html)
+
+    # Then
+    assert result is completed
 
 
 def test_normalize_event_date_accepts_both_ampm_orders() -> None:

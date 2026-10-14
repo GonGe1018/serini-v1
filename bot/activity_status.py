@@ -92,9 +92,11 @@ def activity_is_completed(kind: Literal["assignment", "quiz"], html: str) -> boo
             for row in document.select(".quizattemptsummary tbody tr"):
                 if row.select_one('a[href*="/mod/quiz/review.php"]') is not None:
                     return True
-                state_cell = row.select_one(".state")
+                state_cell = row.select_one(".state, td.c1")
                 state = (
-                    normalize_activity_title(state_cell.get_text(" ", strip=True)).lower()
+                    normalize_activity_title(
+                        state_cell.get_text("\n", strip=True).partition("\n")[0]
+                    ).lower()
                     if state_cell is not None
                     else ""
                 )
